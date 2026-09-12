@@ -1,0 +1,8 @@
+export default function CitizenPage() {
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Citizen Portal</h1>
+      <p>Citizen Portal (placeholder)</p>
+    </div>
+  );
+}
