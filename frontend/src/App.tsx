@@ -3,6 +3,7 @@ import Layout from "./components/Layout";
 import CitizenPage from "./pages/CitizenPage";
 import AdminPage from "./pages/AdminPage";
 import ContractorPage from "./pages/ContractorPage";
+import CertificatePage from "./pages/CertificatePage";   // <-- new import
 
 export default function App() {
   return (
@@ -14,6 +15,8 @@ export default function App() {
           <Route path="/citizen" element={<CitizenPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/contractor" element={<ContractorPage />} />
+          {/* --- new certificate route --- */}
+          <Route path="/certificate/:id" element={<CertificatePage />} />
         </Route>
       </Routes>
     </BrowserRouter>

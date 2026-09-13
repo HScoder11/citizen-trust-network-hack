@@ -25,6 +25,7 @@ interface Complaint {
   };
   status: string;
   assigned_to: string | null;
+  certificate_ready: number;   // <-- new field
 }
 
 export default function AdminDashboard() {
@@ -61,6 +62,7 @@ export default function AdminDashboard() {
           <th className="p-2">Location</th>
           <th className="p-2">Status</th>
           <th className="p-2">Assign</th>
+          <th className="p-2">Certificate</th> {/* --- new column --- */}
         </tr>
       </thead>
       <tbody>
@@ -95,6 +97,19 @@ export default function AdminDashboard() {
                     </option>
                   ))}
                 </select>
+              )}
+            </td>
+            <td className="p-2">
+              {c.certificate_ready ? (
+                <a
+                  href={`/certificate/${c.id}`}
+                  target="_blank"
+                  className="text-blue-600 underline text-xs"
+                >
+                  📜 Certificate Available
+                </a>
+              ) : (
+                <span className="text-xs text-gray-400">Pending</span>
               )}
             </td>
           </tr>

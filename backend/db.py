@@ -24,7 +24,8 @@ def init_db():
             status TEXT DEFAULT 'Reported',
             assigned_to TEXT,
             verification_confidence REAL,
-            verification_pass INTEGER
+            verification_pass INTEGER,
+            certificate_ready INTEGER DEFAULT 0
         )
     """)
     conn.execute("""
