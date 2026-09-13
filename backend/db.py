@@ -17,11 +17,14 @@ def init_db():
             payload TEXT,
             before_path TEXT,
             voice_path TEXT,
+            after_path TEXT,
             created_at TEXT,
             lat REAL,
             lng REAL,
             status TEXT DEFAULT 'Reported',
-            assigned_to TEXT
+            assigned_to TEXT,
+            verification_confidence REAL,
+            verification_pass INTEGER
         )
     """)
     conn.execute("""

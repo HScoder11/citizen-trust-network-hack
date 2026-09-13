@@ -16,11 +16,12 @@ function deadlineFromNow(days: number) {
 
 export default function ContractorPage() {
   const [loggedIn, setLoggedIn] = useState(false);
-  const [contractorName] = useState(DEMO_CONTRACTOR); // 6-5: stored in state for API calls
+  const [contractorName] = useState(DEMO_CONTRACTOR);
   const [jobs, setJobs] = useState<Complaint[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [afterPhoto, setAfterPhoto] = useState<File | null>(null);
   const [uploaded, setUploaded] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<{ confidence: number; pass: boolean } | null>(null);
 
   const loadJobs = () => {
     fetch(
@@ -41,19 +42,22 @@ export default function ContractorPage() {
     setActiveJobId(id);
     setUploaded(false);
     setAfterPhoto(null);
+    setVerifyResult(null);
   };
 
   const uploadAfterPhoto = async () => {
     if (!activeJobId || !afterPhoto) return;
     const formData = new FormData();
     formData.append("after_photo", afterPhoto);
-    await fetch(
+    const res = await fetch(
       `http://localhost:8000/complaints/${activeJobId}/after-photo`,
       {
         method: "POST",
         body: formData,
       }
     );
+    const data = await res.json();
+    setVerifyResult({ confidence: data.confidence, pass: data.pass });
     setUploaded(true);
     loadJobs();
   };
@@ -62,6 +66,7 @@ export default function ContractorPage() {
     setLoggedIn(false);
     setJobs([]);
     setActiveJobId(null);
+    setVerifyResult(null);
   };
 
   if (!loggedIn) {
@@ -128,8 +133,16 @@ export default function ContractorPage() {
                   >
                     Upload After Photo
                   </button>
-                  {uploaded && (
-                    <span className="text-xs text-green-700">Uploaded!</span>
+                  {uploaded && verifyResult && (
+                    verifyResult.pass ? (
+                      <span className="text-xs text-green-700">
+                        ✅ Verification passed ({Math.round(verifyResult.confidence * 100)}% confidence)
+                      </span>
+                    ) : (
+                      <span className="text-xs text-red-600">
+                        ❌ Verification failed ({Math.round(verifyResult.confidence * 100)}% confidence) — try a clearer after-photo
+                      </span>
+                    )
                   )}
                 </div>
               )}

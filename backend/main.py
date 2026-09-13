@@ -9,7 +9,8 @@ from fastapi import FastAPI, UploadFile, File, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from db import get_db, init_db
 from llm_client import LLMClient
-from ledger import create_block, get_tip   # <-- integrate ledger functions
+from ledger import create_block, get_tip
+from verification import compare_images   # <-- integrate verification functions
 
 # Load environment variables from .env file FIRST
 load_dotenv()
@@ -179,14 +180,36 @@ async def upload_after_photo(complaint_id: str, after_photo: UploadFile = File(.
         f.write(await after_photo.read())
 
     conn = get_db()
+    row = conn.execute("SELECT before_path FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
+    before_path = row["before_path"] if row else None
+
+    if before_path:
+        result = compare_images(before_path, after_path)
+    else:
+        result = {"confidence": 0.0, "pass": False}
+
+    new_status = "Resolved" if result["pass"] else "Work Started"
+
     conn.execute(
-        "UPDATE complaints SET status = ? WHERE id = ?",
-        ("Work Started", complaint_id),
+        "UPDATE complaints SET after_path = ?, status = ?, verification_confidence = ?, verification_pass = ? WHERE id = ?",
+        (after_path, new_status, result["confidence"], int(result["pass"]), complaint_id),
     )
     conn.commit()
     conn.close()
 
-    return {"id": complaint_id, "status": "Work Started"}
+    if result["pass"]:
+        create_block({
+            "event": "work_completed",
+            "complaint_id": complaint_id,
+            "confidence": result["confidence"],
+        })
+
+    return {
+        "id": complaint_id,
+        "status": new_status,
+        "confidence": result["confidence"],
+        "pass": result["pass"],
+    }
 
 @app.get("/ledger/tip")
 def ledger_tip():
