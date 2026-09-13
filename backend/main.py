@@ -1,3 +1,5 @@
+# backend/main.py
+
 import math
 import uuid
 import json
@@ -9,13 +11,13 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from db import get_db, init_db
 from llm_client import LLMClient
+from ledger import create_block, get_tip   # <-- integrate ledger functions
 
 # Load environment variables from .env file FIRST
 load_dotenv()
 
 # Access the Gemini API key
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in .env file")
 
@@ -65,71 +67,74 @@ async def create_complaint(
     lat: float | None = Form(None),
     lng: float | None = Form(None),
 ):
-    # Validate text
     if not text.strip():
         return {"error": "Complaint text is required"}
 
-    # Generate unique ID
     complaint_id = "CTN-" + uuid.uuid4().hex[:8].upper()
-
-    # Classify the complaint using LLM
     classification = llm_client.classify(text)
 
-    # Initialize file paths
-    before_path = None
-    voice_path = None
+    before_path, voice_path = None, None
 
-    # Save 'before' photo if provided
     if before_photo and before_photo.filename:
         before_path = f"uploads/{complaint_id}_{before_photo.filename}"
         with open(before_path, "wb") as f:
             f.write(await before_photo.read())
 
-    # Save voice note if provided
     if voice_note and voice_note.filename:
         voice_path = f"uploads/{complaint_id}_{voice_note.filename}"
         with open(voice_path, "wb") as f:
             f.write(await voice_note.read())
 
-    # --- Dedup Check Logic ---
+    # Dedup check
     is_duplicate = False
     conn = get_db()
     existing = conn.execute("SELECT payload, lat, lng FROM complaints").fetchall()
-
     for row in existing:
         try:
             existing_text = json.loads(row["payload"]).get("text", "")
         except (json.JSONDecodeError, TypeError):
             continue
-
         sim = text_similarity(text, existing_text)
-
         if sim > 0.8:
-            # If both sides have location data, check distance
             if (lat is not None and lng is not None and 
                 row["lat"] is not None and row["lng"] is not None):
                 dist = haversine_meters(lat, lng, row["lat"], row["lng"])
-                if dist < 5:  # Strict proximity check
+                if dist < 5:
                     is_duplicate = True
                     break
             else:
-                # No location data on either side -> fall back to text match
                 is_duplicate = True
                 break
     conn.close()
 
-    # Prepare payload with classification included
-    payload = json.dumps({"text": text, **classification})
+    payload = {"text": text, **classification}
     created_at = datetime.utcnow().isoformat()
 
-    # Insert into database
     conn = get_db()
     conn.execute(
         "INSERT INTO complaints (id, payload, before_path, voice_path, lat, lng, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (complaint_id, payload, before_path, voice_path, lat, lng, created_at),
+        (complaint_id, json.dumps(payload), before_path, voice_path, lat, lng, created_at),
     )
     conn.commit()
     conn.close()
 
-    # Return response with classification and duplicate flag
-    return {"id": complaint_id, "duplicate": is_duplicate, **classification}
+    # Immutable ledger entry after complaint insert
+    block_hash = create_block({
+        "event": "complaint_created",
+        "complaint_id": complaint_id,
+        **classification,
+    })
+
+    return {"id": complaint_id, "duplicate": is_duplicate, "ledger_hash": block_hash, **classification}
+
+@app.get("/ledger/tip")
+def ledger_tip():
+    return {"tip_hash": get_tip()}
+
+# Debug endpoint to inspect full ledger chain
+@app.get("/ledger/all")
+def ledger_all():
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM ledger ORDER BY block_number").fetchall()
+    conn.close()
+    return [dict(row) for row in rows]

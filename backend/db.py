@@ -1,17 +1,15 @@
-import sqlite3
-from pathlib import Path
+# backend/db.py
 
-# SQLite database file path (relative to backend root)
-DB_PATH = Path(__file__).parent / "complaints.db"
+import sqlite3
+
+DB_PATH = "complaints.db"
 
 def get_db():
-    """Open a new database connection."""
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # Enables column access by name
+    conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
-    """Create the complaints table if it doesn't exist."""
     conn = get_db()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS complaints (
@@ -22,6 +20,15 @@ def init_db():
             created_at TEXT,
             lat REAL,
             lng REAL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ledger (
+            block_number INTEGER PRIMARY KEY AUTOINCREMENT,
+            prev_hash TEXT,
+            payload TEXT,
+            timestamp TEXT,
+            hash TEXT
         )
     """)
     conn.commit()
