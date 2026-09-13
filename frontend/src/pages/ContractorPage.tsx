@@ -23,6 +23,12 @@ export default function ContractorPage() {
   const [uploaded, setUploaded] = useState(false);
   const [verifyResult, setVerifyResult] = useState<{ confidence: number; pass: boolean } | null>(null);
 
+  // --- 8-1 community simulation state ---
+  const [communitySim, setCommunitySim] = useState(false);
+  const COMMUNITY_CONFIRMATIONS = 8;
+  const COMMUNITY_TOTAL = 10;
+  const COMMUNITY_CONFIDENCE = 0.87;
+
   const loadJobs = () => {
     fetch(
       `http://localhost:8000/complaints?assigned_to=${encodeURIComponent(
@@ -49,6 +55,10 @@ export default function ContractorPage() {
     if (!activeJobId || !afterPhoto) return;
     const formData = new FormData();
     formData.append("after_photo", afterPhoto);
+
+    // --- send community simulation flag ---
+    formData.append("community_confirmed", String(communitySim));
+
     const res = await fetch(
       `http://localhost:8000/complaints/${activeJobId}/after-photo`,
       {
@@ -120,6 +130,23 @@ export default function ContractorPage() {
                 </button>
               ) : (
                 <div className="mt-2 flex flex-col gap-2">
+                  {/* --- Toggle and counter display --- */}
+                  <label className="flex items-center gap-2 text-xs text-gray-600 mb-2">
+                    <input
+                      type="checkbox"
+                      checked={communitySim}
+                      onChange={(e) => setCommunitySim(e.target.checked)}
+                    />
+                    Simulate community confirmations
+                  </label>
+                  {communitySim && (
+                    <div className="text-xs text-blue-700 mb-2">
+                      Community confirmations: {COMMUNITY_CONFIRMATIONS} / {COMMUNITY_TOTAL} (
+                      {Math.round(COMMUNITY_CONFIDENCE * 100)}% confidence)
+                    </div>
+                  )}
+
+                  {/* --- File input remains unchanged --- */}
                   <input
                     type="file"
                     accept="image/*"
@@ -134,15 +161,28 @@ export default function ContractorPage() {
                     Upload After Photo
                   </button>
                   {uploaded && verifyResult && (
-                    verifyResult.pass ? (
-                      <span className="text-xs text-green-700">
-                        ✅ Verification passed ({Math.round(verifyResult.confidence * 100)}% confidence)
-                      </span>
-                    ) : (
-                      <span className="text-xs text-red-600">
-                        ❌ Verification failed ({Math.round(verifyResult.confidence * 100)}% confidence) — try a clearer after-photo
-                      </span>
-                    )
+                    <>
+                      {verifyResult.pass ? (
+                        <span className="text-xs text-green-700">
+                          ✅ Verification passed ({Math.round(verifyResult.confidence * 100)}% confidence)
+                        </span>
+                      ) : (
+                        <span className="text-xs text-red-600">
+                          ❌ Verification failed ({Math.round(verifyResult.confidence * 100)}% confidence) — try a clearer after-photo
+                        </span>
+                      )}
+                      {communitySim && (
+                        <span className="text-xs text-blue-700">
+                          👥 Community confirmations: {COMMUNITY_CONFIRMATIONS}/{COMMUNITY_TOTAL} ({Math.round(COMMUNITY_CONFIDENCE * 100)}% confidence)
+                        </span>
+                      )}
+                      {/* --- 8-4 Community Verified badge --- */}
+                      {uploaded && verifyResult?.pass && communitySim && (
+                        <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                          🤝 Community Verified
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               )}

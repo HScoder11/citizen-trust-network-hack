@@ -1,5 +1,3 @@
-// frontend/src/pages/AdminPage.tsx
-
 import { useEffect, useState } from "react";
 import AdminDashboard from "../components/AdminDashboard";
 
@@ -18,9 +16,10 @@ export default function AdminPage() {
       <h1 className="text-xl font-bold mb-4">Admin Dashboard</h1>
       <div className="bg-gray-100 rounded p-3 text-sm">
         <span className="font-semibold">Latest Ledger Hash: </span>
-        <span className="font-mono break-all">
-          {tipHash ?? "Loading..."}
-        </span>
+        <span className="font-mono break-all">{tipHash ?? "Loading..."}</span>
+        <p className="text-xs text-gray-400 mt-1">
+          Note: community confirmation scores are simulated for this demo (no real IoT/community sensor integration).
+        </p>
       </div>
 
       <div className="mt-6">
