@@ -19,7 +19,9 @@ def init_db():
             voice_path TEXT,
             created_at TEXT,
             lat REAL,
-            lng REAL
+            lng REAL,
+            status TEXT DEFAULT 'Reported',
+            assigned_to TEXT
         )
     """)
     conn.execute("""

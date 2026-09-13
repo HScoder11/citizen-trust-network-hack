@@ -1,5 +1,3 @@
-# backend/main.py
-
 import math
 import uuid
 import json
@@ -7,7 +5,7 @@ import os
 from datetime import datetime
 from difflib import SequenceMatcher
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from db import get_db, init_db
 from llm_client import LLMClient
@@ -112,8 +110,17 @@ async def create_complaint(
 
     conn = get_db()
     conn.execute(
-        "INSERT INTO complaints (id, payload, before_path, voice_path, lat, lng, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (complaint_id, json.dumps(payload), before_path, voice_path, lat, lng, created_at),
+        "INSERT INTO complaints (id, payload, before_path, voice_path, lat, lng, created_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            complaint_id,
+            json.dumps(payload),
+            before_path,
+            voice_path,
+            lat,
+            lng,
+            created_at,
+            "Reported",   # <-- default status
+        ),
     )
     conn.commit()
     conn.close()
@@ -126,6 +133,60 @@ async def create_complaint(
     })
 
     return {"id": complaint_id, "duplicate": is_duplicate, "ledger_hash": block_hash, **classification}
+
+@app.get("/complaints")
+def list_complaints(status: str | None = None, assigned_to: str | None = None):
+    conn = get_db()
+    query = "SELECT * FROM complaints WHERE 1=1"
+    params = []
+
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+
+    if assigned_to:
+        query += " AND assigned_to = ?"
+        params.append(assigned_to)
+
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    result = []
+    for row in rows:
+        d = dict(row)
+        try:
+            d["payload"] = json.loads(d["payload"])
+        except (json.JSONDecodeError, TypeError):
+            d["payload"] = d["payload"]
+        result.append(d)
+    return result
+
+@app.put("/complaints/{complaint_id}/assign")
+def assign_complaint(complaint_id: str, contractor: str = Body(..., embed=True)):
+    conn = get_db()
+    conn.execute(
+        "UPDATE complaints SET assigned_to = ?, status = ? WHERE id = ?",
+        (contractor, "Assigned", complaint_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"id": complaint_id, "assigned_to": contractor, "status": "Assigned"}
+
+@app.post("/complaints/{complaint_id}/after-photo")
+async def upload_after_photo(complaint_id: str, after_photo: UploadFile = File(...)):
+    after_path = f"uploads/{complaint_id}_after_{after_photo.filename}"
+    with open(after_path, "wb") as f:
+        f.write(await after_photo.read())
+
+    conn = get_db()
+    conn.execute(
+        "UPDATE complaints SET status = ? WHERE id = ?",
+        ("Work Started", complaint_id),
+    )
+    conn.commit()
+    conn.close()
+
+    return {"id": complaint_id, "status": "Work Started"}
 
 @app.get("/ledger/tip")
 def ledger_tip():
