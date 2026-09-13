@@ -227,7 +227,7 @@ async def upload_after_photo(
 
         # --- Auto-set certificate_ready (9-4) ---
         conn2 = get_db()
-        conn2.execute("UPDATE complaints SET certificate_ready = 1 WHERE id = ?", (complaint_id,))
+        conn2.execute("UPDATE complaints SET certificate_ready = 1, payment_status = ? WHERE id = ?", ("released",complaint_id,))
         conn2.commit()
         conn2.close()
 

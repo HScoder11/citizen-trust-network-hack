@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 const CONTRACTORS = ["ABC Infrastructure", "XYZ Contractors", "Metro Works Ltd"];
+const DEMO_PAYMENT_AMOUNT = "₹18,500";   // <-- demo amount constant
 
 const statusColors: Record<string, string> = {
   Reported: "bg-yellow-100 text-yellow-800",
@@ -25,7 +26,8 @@ interface Complaint {
   };
   status: string;
   assigned_to: string | null;
-  certificate_ready: number;   // <-- new field
+  certificate_ready: number;
+  payment_status: string;   // <-- new field
 }
 
 export default function AdminDashboard() {
@@ -62,7 +64,8 @@ export default function AdminDashboard() {
           <th className="p-2">Location</th>
           <th className="p-2">Status</th>
           <th className="p-2">Assign</th>
-          <th className="p-2">Certificate</th> {/* --- new column --- */}
+          <th className="p-2">Certificate</th>
+          <th className="p-2">Payment</th> {/* --- new column --- */}
         </tr>
       </thead>
       <tbody>
@@ -108,6 +111,18 @@ export default function AdminDashboard() {
                 >
                   📜 Certificate Available
                 </a>
+              ) : (
+                <span className="text-xs text-gray-400">Pending</span>
+              )}
+            </td>
+            <td className="p-2">
+              {c.payment_status === "released" ? (
+                <span
+                  className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs"
+                  title="Payment is released only after AI verification + community confirmation pass"
+                >
+                  ✅ Payment Released – {DEMO_PAYMENT_AMOUNT}
+                </span>
               ) : (
                 <span className="text-xs text-gray-400">Pending</span>
               )}

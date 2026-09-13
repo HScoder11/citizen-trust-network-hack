@@ -25,7 +25,8 @@ def init_db():
             assigned_to TEXT,
             verification_confidence REAL,
             verification_pass INTEGER,
-            certificate_ready INTEGER DEFAULT 0
+            certificate_ready INTEGER DEFAULT 0,
+            payment_status TEXT DEFAULT 'pending'
         )
     """)
     conn.execute("""
