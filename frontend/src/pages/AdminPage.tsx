@@ -1,6 +1,7 @@
 // frontend/src/pages/AdminPage.tsx
 
 import { useEffect, useState } from "react";
+import AdminDashboard from "../components/AdminDashboard";
 
 export default function AdminPage() {
   const [tipHash, setTipHash] = useState<string | null>(null);
@@ -20,6 +21,11 @@ export default function AdminPage() {
         <span className="font-mono break-all">
           {tipHash ?? "Loading..."}
         </span>
+      </div>
+
+      <div className="mt-6">
+        <h2 className="font-bold mb-2">Pending Complaints</h2>
+        <AdminDashboard />
       </div>
     </div>
   );
