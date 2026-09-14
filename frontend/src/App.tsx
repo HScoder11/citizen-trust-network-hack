@@ -4,6 +4,7 @@ import CitizenPage from "./pages/CitizenPage";
 import AdminPage from "./pages/AdminPage";
 import ContractorPage from "./pages/ContractorPage";
 import CertificatePage from "./pages/CertificatePage";   // <-- new import
+import PublicDashboardPage from "./pages/PublicDashboardPage"; // <-- import
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/contractor" element={<ContractorPage />} />
           {/* --- new certificate route --- */}
           <Route path="/certificate/:id" element={<CertificatePage />} />
+          <Route path="/public" element={<PublicDashboardPage />} /> {/* <-- new route */}
         </Route>
       </Routes>
     </BrowserRouter>

@@ -19,6 +19,7 @@ export default function Layout() {
           <Link to="/citizen" className="hover:underline">Citizen</Link>
           <Link to="/admin" className="hover:underline">Admin</Link>
           <Link to="/contractor" className="hover:underline">Contractor</Link>
+          <Link to="/public" className="hover:underline">Public Dashboard</Link> {/* <-- new link */}
         </nav>
         <main className="flex-1 p-4">
           <Outlet />

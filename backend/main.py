@@ -4,28 +4,29 @@ import json
 import os
 from datetime import datetime
 from difflib import SequenceMatcher
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
+
 from db import get_db, init_db
 from llm_client import LLMClient
 from ledger import create_block, get_tip
 from verification import compare_images
+from reputation import record_verified_job, get_reputation
 
-# Load environment variables from .env file FIRST
+# Load environment variables
 load_dotenv()
 
-# Access the Gemini API key
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in .env file")
 
+# Initialize FastAPI app
 app = FastAPI()
-
-# Initialize LLM client (single instance for all requests)
 llm_client = LLMClient()
 
-# Enable CORS for frontend (allow all origins for dev)
+# Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,27 +34,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize database and uploads folder on startup
+# Initialize database and uploads folder
 init_db()
 os.makedirs("uploads", exist_ok=True)
 
 # --- Helper Functions ---
 
 def text_similarity(a: str, b: str) -> float:
+    """Compute similarity ratio between two strings."""
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
-def haversine_meters(lat1, lng1, lat2, lng2):
-    R = 6371000
+
+def haversine_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Calculate distance in meters between two lat/lng points using Haversine formula."""
+    R = 6371000  # Earth radius in meters
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lng2 - lng1)
-    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
     return 2 * R * math.asin(math.sqrt(a))
+
 
 # --- Routes ---
 
 @app.get("/")
 def root():
+    """Health check endpoint."""
     return {"status": "ok"}
 
 @app.post("/complaints")
@@ -67,22 +77,27 @@ async def create_complaint(
     if not text.strip():
         return {"error": "Complaint text is required"}
 
+    # Generate unique complaint ID
     complaint_id = "CTN-" + uuid.uuid4().hex[:8].upper()
+
+    # Classify complaint text
     classification = llm_client.classify(text)
 
     before_path, voice_path = None, None
 
+    # Save before photo if provided
     if before_photo and before_photo.filename:
         before_path = f"uploads/{complaint_id}_{before_photo.filename}"
         with open(before_path, "wb") as f:
             f.write(await before_photo.read())
 
+    # Save voice note if provided
     if voice_note and voice_note.filename:
         voice_path = f"uploads/{complaint_id}_{voice_note.filename}"
         with open(voice_path, "wb") as f:
             f.write(await voice_note.read())
 
-    # Dedup check
+    # Deduplication check
     is_duplicate = False
     conn = get_db()
     existing = conn.execute("SELECT payload, lat, lng FROM complaints").fetchall()
@@ -91,10 +106,13 @@ async def create_complaint(
             existing_text = json.loads(row["payload"]).get("text", "")
         except (json.JSONDecodeError, TypeError):
             continue
+
         sim = text_similarity(text, existing_text)
         if sim > 0.8:
-            if (lat is not None and lng is not None and 
-                row["lat"] is not None and row["lng"] is not None):
+            if (
+                lat is not None and lng is not None
+                and row["lat"] is not None and row["lng"] is not None
+            ):
                 dist = haversine_meters(lat, lng, row["lat"], row["lng"])
                 if dist < 5:
                     is_duplicate = True
@@ -104,12 +122,18 @@ async def create_complaint(
                 break
     conn.close()
 
+    # Prepare payload
     payload = {"text": text, **classification}
     created_at = datetime.utcnow().isoformat()
 
+    # Insert complaint into DB
     conn = get_db()
     conn.execute(
-        "INSERT INTO complaints (id, payload, before_path, voice_path, lat, lng, created_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        """
+        INSERT INTO complaints (
+            id, payload, before_path, voice_path, lat, lng, created_at, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
         (
             complaint_id,
             json.dumps(payload),
@@ -118,19 +142,20 @@ async def create_complaint(
             lat,
             lng,
             created_at,
-            "Reported",   # default status
+            "Reported",
         ),
     )
     conn.commit()
     conn.close()
 
-    # Immutable ledger entry after complaint insert
+    # Log immutable ledger entry
     block_hash = create_block({
         "event": "complaint_created",
         "complaint_id": complaint_id,
         **classification,
     })
 
+    # Return response
     return {
         "id": complaint_id,
         "duplicate": is_duplicate,
@@ -140,9 +165,10 @@ async def create_complaint(
 
 @app.get("/complaints")
 def list_complaints(status: str | None = None, assigned_to: str | None = None):
+    """List complaints with optional filters for status and assigned contractor."""
     conn = get_db()
     query = "SELECT * FROM complaints WHERE 1=1"
-    params = []
+    params: list = []
 
     if status:
         query += " AND status = ?"
@@ -163,16 +189,23 @@ def list_complaints(status: str | None = None, assigned_to: str | None = None):
         except (json.JSONDecodeError, TypeError):
             pass
         result.append(d)
+
     return result
 
 
 @app.get("/complaints/{complaint_id}")
 def get_complaint(complaint_id: str):
+    """Fetch a single complaint by ID."""
     conn = get_db()
-    row = conn.execute("SELECT * FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
+    row = conn.execute(
+        "SELECT * FROM complaints WHERE id = ?",
+        (complaint_id,)
+    ).fetchone()
     conn.close()
+
     if not row:
         return {"error": "Not found"}
+
     d = dict(row)
     d["payload"] = json.loads(d["payload"])
     return d
@@ -180,6 +213,7 @@ def get_complaint(complaint_id: str):
 
 @app.put("/complaints/{complaint_id}/assign")
 def assign_complaint(complaint_id: str, contractor: str = Body(..., embed=True)):
+    """Assign a contractor to a complaint and update its status."""
     conn = get_db()
     conn.execute(
         "UPDATE complaints SET assigned_to = ?, status = ? WHERE id = ?",
@@ -187,7 +221,12 @@ def assign_complaint(complaint_id: str, contractor: str = Body(..., embed=True))
     )
     conn.commit()
     conn.close()
-    return {"id": complaint_id, "assigned_to": contractor, "status": "Assigned"}
+
+    return {
+        "id": complaint_id,
+        "assigned_to": contractor,
+        "status": "Assigned",
+    }
 
 @app.post("/complaints/{complaint_id}/after-photo")
 async def upload_after_photo(
@@ -195,14 +234,22 @@ async def upload_after_photo(
     after_photo: UploadFile = File(...),
     community_confirmed: bool = Form(False),
 ):
+    """Upload an after-photo, run verification, update complaint status,
+    release payment, and update contractor reputation."""
+    # Save after-photo
     after_path = f"uploads/{complaint_id}_after_{after_photo.filename}"
     with open(after_path, "wb") as f:
         f.write(await after_photo.read())
 
+    # Fetch before-photo path
     conn = get_db()
-    row = conn.execute("SELECT before_path FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
+    row = conn.execute(
+        "SELECT before_path FROM complaints WHERE id = ?",
+        (complaint_id,)
+    ).fetchone()
     before_path = row["before_path"] if row else None
 
+    # Run verification
     if before_path:
         result = compare_images(before_path, after_path)
     else:
@@ -210,8 +257,13 @@ async def upload_after_photo(
 
     new_status = "Resolved" if result["pass"] else "Work Started"
 
+    # Update complaint record
     conn.execute(
-        "UPDATE complaints SET after_path = ?, status = ?, verification_confidence = ?, verification_pass = ? WHERE id = ?",
+        """
+        UPDATE complaints
+        SET after_path = ?, status = ?, verification_confidence = ?, verification_pass = ?
+        WHERE id = ?
+        """,
         (after_path, new_status, result["confidence"], int(result["pass"]), complaint_id),
     )
     conn.commit()
@@ -225,13 +277,26 @@ async def upload_after_photo(
             "confidence": result["confidence"],
         })
 
-        # --- Auto-set certificate_ready (9-4) ---
+        # Auto-set certificate_ready and release payment
         conn2 = get_db()
-        conn2.execute("UPDATE complaints SET certificate_ready = 1, payment_status = ? WHERE id = ?", ("released",complaint_id,))
+        conn2.execute(
+            "UPDATE complaints SET certificate_ready = 1, payment_status = ? WHERE id = ?",
+            ("released", complaint_id),
+        )
         conn2.commit()
         conn2.close()
 
-        # --- 8-3 community confirmation block ---
+        # Reputation tracking
+        conn3 = get_db()
+        row2 = conn3.execute(
+            "SELECT assigned_to FROM complaints WHERE id = ?",
+            (complaint_id,)
+        ).fetchone()
+        if row2 and row2["assigned_to"]:
+            record_verified_job(row2["assigned_to"])
+        conn3.close()
+
+        # Community confirmation block
         if community_confirmed:
             create_block({
                 "event": "community_confirmed",
@@ -250,12 +315,63 @@ async def upload_after_photo(
 
 @app.get("/ledger/tip")
 def ledger_tip():
+    """Return the latest ledger tip hash."""
     return {"tip_hash": get_tip()}
 
 
 @app.get("/ledger/all")
 def ledger_all():
+    """Return the full ledger chain."""
     conn = get_db()
     rows = conn.execute("SELECT * FROM ledger ORDER BY block_number").fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+@app.get("/contractors/{contractor_name}/reputation")
+def contractor_reputation(contractor_name: str):
+    """Return reputation details for a contractor."""
+    return get_reputation(contractor_name)
+
+@app.get("/public/complaints")
+def public_complaints():
+    """Return anonymized list of complaints for public view."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM complaints ORDER BY created_at DESC"
+    ).fetchall()
+    conn.close()
+
+    result = []
+    for i, row in enumerate(rows):
+        d = dict(row)
+        payload = json.loads(d["payload"])
+        result.append({
+            "citizen_id": f"CIT-{1000 + i}",  # anonymized, no real citizen data (11-5)
+            "complaint_id": d["id"],
+            "category": payload.get("category", "Other"),
+            "status": d["status"],
+            "ledger_hash": None,  # can be filled in later if needed
+            "certificate_ready": bool(d["certificate_ready"]),
+            "payment_status": d["payment_status"],
+        })
+
+    return result
+
+
+@app.get("/public/stats")
+def public_stats():
+    """Return aggregate statistics for public dashboard."""
+    conn = get_db()
+    total = conn.execute(
+        "SELECT COUNT(*) as c FROM complaints"
+    ).fetchone()["c"]
+    resolved = conn.execute(
+        "SELECT COUNT(*) as c FROM complaints WHERE status = 'Resolved'"
+    ).fetchone()["c"]
+    conn.close()
+
+    return {
+        "total_complaints": total,
+        "resolved": resolved,
+    }

@@ -38,5 +38,16 @@ def init_db():
             hash TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS contractor_reputation (
+            contractor_name TEXT PRIMARY KEY,
+            trust_score REAL DEFAULT 100,
+            completed_jobs INTEGER DEFAULT 0,
+            verified_jobs INTEGER DEFAULT 0,
+            disputed_jobs INTEGER DEFAULT 0,
+            rejected_jobs INTEGER DEFAULT 0
+        )
+    """)
     conn.commit()
     conn.close()
+
